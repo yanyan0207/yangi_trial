@@ -1,0 +1,4 @@
+wdoor+floodgate-300-10F+elmo_WCSC27_479_100k+Krist_483_473stb_100k+20200620040006.csa
+wdoor+floodgate-300-10F+elmo_WCSC27_479_4t_10m+dbga+20201203073013.csa
+wdoor+floodgate-300-10F+Emily+az_w1165_n_p800_IgnoreUnpromote+20200524110004.csa
+wdoor+floodgate-300-10F+dbga+coduck_pi2_600MHz_1c+20201203100018.csa

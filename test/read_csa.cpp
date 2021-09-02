@@ -6,6 +6,16 @@
 #include <tuple>
 #include <sstream>
 
+typedef struct {
+    std::string last_command;
+    std::map<std::string,std::string> settings;
+    std::vector<std::string> move_list;
+    std::string initial_pos;
+    std::string end_pos;
+    std::string summary;
+
+}CsaData;
+
 std::string hirate_initial_pos = 
 "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY\n"
 "P2 * -HI *  *  *  *  * -KA * \n" 
@@ -23,25 +33,34 @@ bool startWith(const std::string &str,const std::string &prefix) {
 
 std::vector<std::string> split(const std::string &str,const char seperator) {
     std::vector<std::string> ret;
-    int nextpos,pos = 0;
-    while((nextpos = str.find(seperator,pos+1)) > 0) {
-        ret.push_back(str.substr(pos+1,nextpos-pos));
+    int nextpos,pos = -1;
+    std::cout << str << std::endl;
+    while((nextpos = str.find(seperator,pos+1)) != std::string::npos) {
+        std::cout << "pos:" << pos << " nextpos:" << nextpos << std::endl;
+        ret.push_back(str.substr(pos+1,nextpos- 1 - pos));
         pos = nextpos;
     }
-    ret.push_back(str.substr(pos));
+    ret.push_back(str.substr(pos+1));
     return ret;
 
 }
 
-std::tuple<std::string,std::vector<std::string>,std::string,std::vector<std::string>> read_csa(const std::string file_name) {
-    std::cout << file_name << std::endl;
+CsaData read_csa(const std::string file_name) {
+    std::cout << std::endl << file_name << std::endl;
     std::ifstream ifs(file_name);
 
     std::vector<std::string> lines;
     std::string line;
+    if(!ifs) {
+        throw std::runtime_error(file_name + " cannot open");
+    }
     while(std::getline(ifs,line)) {
+        if (line.size() == 0) {
+            throw new std::runtime_error("void line error");
+        }
         lines.push_back(line);
     }
+    std::cout << "line_num" << lines.size() << std::endl;
 
     std::string version = lines[0];
     std::string black_player = lines[1];
@@ -52,6 +71,7 @@ std::tuple<std::string,std::vector<std::string>,std::string,std::vector<std::str
     // 平手確認
     int line_idx = 2;
     std::string initial_pos;
+    std::map<std::string,std::string> settings;
     while(++line_idx < lines.size()) {
         line = lines[line_idx];
         if (line[0] == '+') {
@@ -60,8 +80,26 @@ std::tuple<std::string,std::vector<std::string>,std::string,std::vector<std::str
             if (line[0] == 'P') {
                 initial_pos += line + "\n";
             }
+            else if(line[0] == '\'') {
+                const auto &tmp = split(line.substr(1),':');
+                if (tmp.size() != 2) {
+                    throw std::runtime_error("unexpected settings:" + line);
+                }
+                settings[tmp[0]] = tmp[1];
+            }
         }
     }
+
+    int max_moves = -1;
+    if(settings.count("Max_Moves")) {
+        max_moves = std::atoi(settings["Max_Moves"].c_str());
+        std::cout << "max_moves:" << max_moves << std::endl;
+    }
+    std::cout << "settings" << std::endl;
+    for (const auto &pair : settings) {
+        std::cout << "\t" << pair.first << " " << pair.second << std::endl;
+    }
+
     if (initial_pos != hirate_initial_pos) {
         std::cout << initial_pos << std::endl;
         std::cout << hirate_initial_pos << std::endl;
@@ -72,7 +110,7 @@ std::tuple<std::string,std::vector<std::string>,std::string,std::vector<std::str
     if (line == "+") {
         while(++line_idx < lines.size()) {
             line = lines[line_idx];
-            if (line[0] == '+') {
+            if (line[0] == '+' || line[0] == '%') {
                 break;
             }
             else if(startWith(line,"'black_rate:")){
@@ -94,40 +132,67 @@ std::tuple<std::string,std::vector<std::string>,std::string,std::vector<std::str
         line = lines[line_idx];
         // 先手番
         if(black && line[0] == '+') {
+            // コメント削除
+            int pos = line.find("'");
+            if (pos != std::string::npos) {
+                line = line.substr(0,line.find_last_not_of(" ",pos-1)+1);
+            }
             move_list.push_back(line);
             black = false;
         }
         // 後手番
         else if(!black && line[0] == '-') {
+            // コメント削除
+            int pos = line.find("'");
+            if (pos != std::string::npos) {
+                line = line.substr(0,line.find_last_not_of(" ",pos-1)+1);
+            }
             move_list.push_back(line);
             black = true;
         }
+
         // 終了コマンド
-        else if(line[0] == '%') {
+        if(line[0] == '%') {
             last_command = line;
+            break;
+        }
+        if (move_list.size() == max_moves) {
             break;
         }
     }
 
     std::cout << move_list.size() << " move:" << last_command << std::endl;
-
+    std::cout << "last_command:" << last_command << std::endl;
     // footer
     std::string end_pos;
-    std::vector<std::string> summary;
+    std::string summary;
     while(++line_idx < lines.size()) {
         line = lines[line_idx];
+        if (last_command.size() == 0 && line[0] == '%') {
+            last_command = line;
+        }
         if (line.substr(0,2) == "'P") {
             end_pos += line.substr(1) + "\n";
         }
         else if (startWith(line,"'summary:")) {
-            summary = split(line,':');
+            summary = line;
         }
     }
     for (const auto &str : summary) {
         std::cout << str << " ";
     }
     std::cout << std::endl;
-    return std::make_tuple(initial_pos,move_list,end_pos,summary);
+    std::cout << "read_csa finish" << std::endl;
+
+    CsaData data;
+    data.last_command = last_command;
+    data.move_list = move_list;
+    data.initial_pos = initial_pos;
+    data.end_pos = end_pos;
+    data.settings = settings;
+    data.summary = summary;
+
+    return data;
 }
 
 std::string narikoma(const std::string &koma) {
@@ -143,12 +208,14 @@ std::string narikoma(const std::string &koma) {
 }
 
 int main(int argc,char **argv) {
-    for (int i = 1;i<argc;i++) {
-        auto csa = read_csa(argv[i]);
-        const std::string &initial_pos = std::get<0>(csa);
-        const auto &move_list = std::get<1>(csa);
-        const std::string &end_pos = std::get<2>(csa);
-        const auto &summary = std::get<3>(csa);
+    for (int fileno = 1;fileno<argc;fileno++) {
+        std::cout << "No." << fileno << std::endl;
+        auto csa = read_csa(argv[fileno]);
+        const std::string &initial_pos = csa.initial_pos;
+        const auto &move_list = csa.move_list;
+        const std::string &end_pos = csa.end_pos;
+        const std::string &last_command = csa.last_command;
+        const auto &settings = csa.settings;
 
         if(initial_pos != hirate_initial_pos) {
             std::cerr << "initial_pos is not hirate" << std::endl; 
@@ -161,7 +228,13 @@ int main(int argc,char **argv) {
             }
         }
         bool black = true;
-        for (const auto &move : move_list) {
+        int last_num = move_list.size();
+        if(last_command == "%SENNICHITE") {
+            last_num--;
+        }
+        for (int tesuu = 0;tesuu<last_num;tesuu++) {
+            const auto &move = move_list[tesuu];
+            //std::cout << move << std::endl;
             std::string teban = move.substr(0,1);
             unsigned int src_col = '9' - move[1];
             unsigned int src_row = move[2] - '1';
@@ -170,7 +243,7 @@ int main(int argc,char **argv) {
             std::string koma = move.substr(5,2);
             if ((black ? "+" : "-") != teban || move.size() != 7 || 
                 (src_col != 9 && (src_row >= 9 || src_col >= 9)) || dst_row >= 9 || dst_col >= 9) {
-                std::cerr << "move error:" << move << std::endl;
+                std::cerr << "move error:'" << move << "'" << std::endl;
                 return - 1;
             }
             if (src_col == 9) {
@@ -209,7 +282,10 @@ int main(int argc,char **argv) {
         std::string last_board = last_board_ss.str();
 
         if (last_board != end_pos.substr(0,270)) {
+            std::cout << "last_board" << std::endl;
             std::cout << last_board << std::endl;
+
+            std::cout << "end_pos" << std::endl;
             std::cout << end_pos.substr(0,270) << std::endl;
             return -1;
         }
