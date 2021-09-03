@@ -71,7 +71,7 @@
     "editor.formatOnSave": true,
     "cmake.debugConfig": {
         "args": [
-            "wdoor+floodgate-300-10F+AobaZero_w930_n_p400_t8+Krist_483_473stb_1000k+20200404170006.csa"
+            "../wdoor+floodgate-300-10F+AobaZero_w930_n_p400_t8+Krist_483_473stb_1000k+20200404170006.csa"
         ]
     }
 }
