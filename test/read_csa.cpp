@@ -11,15 +11,15 @@
 #include "../util.h"
 
 std::string hirate_initial_pos =
-    "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY\n"
-    "P2 * -HI *  *  *  *  * -KA * \n"
-    "P3-FU-FU-FU-FU-FU-FU-FU-FU-FU\n"
-    "P4 *  *  *  *  *  *  *  *  * \n"
-    "P5 *  *  *  *  *  *  *  *  * \n"
-    "P6 *  *  *  *  *  *  *  *  * \n"
-    "P7+FU+FU+FU+FU+FU+FU+FU+FU+FU\n"
-    "P8 * +KA *  *  *  *  * +HI * \n"
-    "P9+KY+KE+GI+KI+OU+KI+GI+KE+KY\n";
+    "-KY-KE-GI-KI-OU-KI-GI-KE-KY\n"
+    " * -HI *  *  *  *  * -KA * \n"
+    "-FU-FU-FU-FU-FU-FU-FU-FU-FU\n"
+    " *  *  *  *  *  *  *  *  * \n"
+    " *  *  *  *  *  *  *  *  * \n"
+    " *  *  *  *  *  *  *  *  * \n"
+    "+FU+FU+FU+FU+FU+FU+FU+FU+FU\n"
+    " * +KA *  *  *  *  * +HI * \n"
+    "+KY+KE+GI+KI+OU+KI+GI+KE+KY\n";
 
 std::string narikoma(const std::string &koma) {
     std::map<std::string, std::string> pair = {
@@ -28,7 +28,16 @@ std::string narikoma(const std::string &koma) {
     };
     return pair.count(koma) ? pair[koma] : "";
 }
-class CsaException : std::runtime_error {
+
+std::string narimotokoma(const std::string &koma) {
+    std::map<std::string, std::string> pair = {
+        {"TO", "FU"}, {"NY", "KY"}, {"NK", "KE"},
+        {"NG", "GI"}, {"UM", "KA"}, {"RY", "HI"},
+    };
+    return pair.count(koma) ? pair[koma] : "";
+}
+
+class CsaException : public std::runtime_error {
    public:
     explicit CsaException(const std::string file_name, const std::string reason)
         : std::runtime_error(file_name + " " + reason) {}
@@ -95,12 +104,13 @@ int CsaReader::ReadExpectedLines(int line_idx, const std::string &prefix,
                                  const std::string &end_prefix) {
     std::string line;
     while (true) {
-        line = lines.at(line_idx++);
+        line = lines.at(line_idx);
         if (Util::StartWith(line, prefix)) {
             (*fpfunc)(this, line);
         } else {
             break;
         }
+        line_idx++;
     }
 
     if (end_prefix != "" && !Util::StartWith(line, end_prefix)) {
@@ -122,12 +132,8 @@ void CsaReader::ReadSettingLine(const std::string &line) {
 }
 
 void CsaReader::ReadStartTime(const std::string &line) {
-    const auto &tmp = Util::Split(line.substr(1), ':');
-    if (tmp.size() != 2) {
-        throw CsaException(file_name, "setting error:" + line);
-    }
-    if (tmp[0] == "$START_TIME") {
-        start_time = tmp[1];
+    if (Util::StartWith(line, "$START_TIME:")) {
+        start_time = line.substr(strlen("$START_TIME:"));
     }
 }
 
@@ -185,7 +191,7 @@ int CsaReader::ReadHeader() {
     line_idx = ReadExpectedLines(
         line_idx, "P",
         [](CsaReader *reader, const std::string &line) {
-            reader->ReadRatingLine(line);
+            reader->initial_pos += line.substr(2) + "\n";
         },
         "+");
 
@@ -195,7 +201,7 @@ int CsaReader::ReadHeader() {
 
     // レート確認
     line_idx = ReadExpectedLines(
-        line_idx, "'P'",
+        line_idx + 1, "'",
         [](CsaReader *reader, const std::string &line) {
             reader->initial_pos += line + "\n";
         },
@@ -208,7 +214,7 @@ int CsaReader::ReadMoveList(int line_idx) {
     std::string board[9][9];
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            board[i][j] = initial_pos.substr(i * 30 + 2 + j * 3, 3);
+            board[i][j] = initial_pos.substr(i * 28 + j * 3, 3);
         }
     }
     bool black = true;
@@ -257,40 +263,43 @@ int CsaReader::ReadMoveList(int line_idx) {
         }
         // サイズ確認
         if (move.size() != 6)
-            throw CsaException(file_name, "move size eror:" + line);
+            throw CsaException(file_name,
+                               "move size eror:" + std::to_string(i));
 
         // 手番確認
         if ((black && teban != '+') || (!black && teban != '-'))
             throw CsaException(file_name, "move teban eror:" + line);
 
         //
-        int src_col = '9' - move[1];
-        int src_row = move[2] - '1';
-        int dst_col = '9' - move[3];
-        int dst_row = move[4] - '1';
-        std::string koma = move.substr(5);
+        int src_col = '9' - move[0];
+        int src_row = move[1] - '1';
+        int dst_col = '9' - move[2];
+        int dst_row = move[3] - '1';
+        std::string koma = move.substr(4);
 
         if (src_col == 9 && src_row == -1) {
             // 持ち駒
             board[dst_row][dst_col] = (black ? "+" : "-") + koma;
         } else {
             // けたチェック
-            auto check = [](int a) -> bool { return a < 0 && a >= 9; };
+            auto check = [](int a) -> bool { return a < 0 || a >= 9; };
             if (check(src_col) || check(src_row) || check(dst_col) ||
                 check(dst_row)) {
                 throw CsaException(file_name, "koma error:" + line);
             }
 
             // 元の駒が同じかチェック
-            if (teban + koma != board[src_row][src_col] &&
-                teban + narikoma(koma) != board[src_row][src_col]) {
+            const std::string &src = board[src_row][src_col];
+            if (teban + koma != src && teban + narimotokoma(koma) != src) {
                 throw CsaException(file_name,
                                    "src koma error:" + line + "\n" +
                                        boardToString((std::string *)board));
             }
 
-            board[dst_row][dst_col] = board[src_row][src_col];
+            board[dst_row][dst_col] = teban + koma;
+            board[src_row][src_col] = " * ";
         }
+        black = !black;
     }
     end_pos = boardToString((std::string *)board);
     return line_idx;
@@ -304,7 +313,7 @@ void CsaReader::ReadFooter(int line_idx) {
 
         // 最後の局面
         if (Util::StartWith(line, "'P")) {
-            Plist.push_back(line.substr(3));
+            Plist.push_back(line.substr(1));
         }
 
         // サマリー
@@ -313,13 +322,14 @@ void CsaReader::ReadFooter(int line_idx) {
         }
 
         // 終了日時
-        if (Util::StartWith(line, "$END_TIME:")) {
-            end_time = line.substr(strlen("$END_TIME:"));
+        if (Util::StartWith(line, "'$END_TIME:")) {
+            end_time = line.substr(strlen("'$END_TIME:"));
         }
     }
 
-    if (Plist.size() != 11) {
-        throw CsaException(file_name, "Plist size");
+    if (Plist.size() < 9 || Plist.size() > 11) {
+        throw CsaException(file_name,
+                           "Plist size:" + std::to_string(Plist.size()));
     }
     if (summary.empty()) {
         throw CsaException(file_name, "no summary");
@@ -330,7 +340,7 @@ void CsaReader::ReadFooter(int line_idx) {
 
     std::string end;
     for (int i = 0; i < 9; i++) {
-        end += Plist[i] + "\n";
+        end += Plist[i].substr(2) + "\n";
     }
 
     if (end_pos != end) {
@@ -340,6 +350,7 @@ void CsaReader::ReadFooter(int line_idx) {
 
 void CsaReader::ReadCsa(const std::string &file) {
     file_name = file;
+    std::cout << file_name << std::endl;
     // ファイルオープン
     std::ifstream ifs(file_name);
     if (!ifs) {
@@ -366,10 +377,13 @@ void CsaReader::ReadCsa(const std::string &file) {
 }
 
 int main(int argc, char **argv) {
+    std::cout << "argc:" << argc << std::endl;
     for (int i = 1; i < argc; i++) {
         CsaReader reader;
         try {
             reader.ReadCsa(argv[i]);
+        } catch (const CsaException &e) {
+            std::cerr << e.what() << std::endl;
         } catch (const std::runtime_error &e) {
             std::cerr << e.what() << std::endl;
         }
