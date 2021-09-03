@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -6,15 +8,7 @@
 #include <tuple>
 #include <vector>
 
-typedef struct {
-    std::string last_command;
-    std::map<std::string, std::string> settings;
-    std::vector<std::string> move_list;
-    std::string initial_pos;
-    std::string end_pos;
-    std::string summary;
-
-} CsaData;
+#include "../util.h"
 
 std::string hirate_initial_pos =
     "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY\n"
@@ -27,126 +21,206 @@ std::string hirate_initial_pos =
     "P8 * +KA *  *  *  *  * +HI * \n"
     "P9+KY+KE+GI+KI+OU+KI+GI+KE+KY\n";
 
-bool startWith(const std::string &str, const std::string &prefix) {
-    return str.substr(0, prefix.length()) == prefix;
+std::string narikoma(const std::string &koma) {
+    std::map<std::string, std::string> pair = {
+        {"FU", "TO"}, {"KY", "NY"}, {"KE", "NK"},
+        {"GI", "NG"}, {"KA", "UM"}, {"HI", "RY"},
+    };
+    return pair.count(koma) ? pair[koma] : "";
 }
+class CsaException : std::runtime_error {
+   public:
+    explicit CsaException(const std::string file_name, const std::string reason)
+        : std::runtime_error(file_name + " " + reason) {}
+};
 
-std::vector<std::string> split(const std::string &str, const char seperator) {
-    std::vector<std::string> ret;
-    int nextpos, pos = -1;
-    std::cout << str << std::endl;
-    while ((nextpos = str.find(seperator, pos + 1)) != std::string::npos) {
-        std::cout << "pos:" << pos << " nextpos:" << nextpos << std::endl;
-        ret.push_back(str.substr(pos + 1, nextpos - 1 - pos));
-        pos = nextpos;
-    }
-    ret.push_back(str.substr(pos + 1));
-    return ret;
-}
+class CsaReader {
+   public:
+    void ReadCsa(const std::string &file_name);
 
-CsaData read_csa(const std::string file_name) {
-    std::cout << std::endl << file_name << std::endl;
-    std::ifstream ifs(file_name);
-
-    std::vector<std::string> lines;
-    std::string line;
-    if (!ifs) {
-        throw std::runtime_error(file_name + " cannot open");
-    }
-    while (std::getline(ifs, line)) {
-        if (line.size() == 0) {
-            throw new std::runtime_error("void line error");
-        }
-        lines.push_back(line);
-    }
-    std::cout << "line_num" << lines.size() << std::endl;
-
-    std::string version = lines[0];
-    std::string black_player = lines[1];
-    std::string white_player = lines[2];
-    std::cout << "black_player:" << black_player << std::endl;
-    std::cout << "white_player:" << white_player << std::endl;
-
-    // 平手確認
-    int line_idx = 2;
-    std::string initial_pos;
-    std::map<std::string, std::string> settings;
-    while (++line_idx < lines.size()) {
-        line = lines[line_idx];
-        if (line[0] == '+') {
-            break;
-        } else {
-            if (line[0] == 'P') {
-                initial_pos += line + "\n";
-            } else if (line[0] == '\'') {
-                const auto &tmp = split(line.substr(1), ':');
-                if (tmp.size() != 2) {
-                    throw std::runtime_error("unexpected settings:" + line);
-                }
-                settings[tmp[0]] = tmp[1];
+   protected:
+    int ReadExpectedLines(int line_idx, const std::string &prefix,
+                          void (*fpfunc)(CsaReader *reader,
+                                         const std::string &line),
+                          const std::string &end_prefix = "");
+    void ReadSettingLine(const std::string &line);
+    void ReadStartTime(const std::string &line);
+    void ReadRatingLine(const std::string &line);
+    int ReadHeader();
+    int ReadMoveList(int line_idx);
+    void ReadFooter(int linc_idx);
+    static std::string boardToString(const std::string *board) {
+        std::string ret;
+        for (int row = 0; row < 9; row++) {
+            for (int col = 0; col < 9; col++) {
+                ret += board[row * 9 + col];
             }
+            ret += "\n";
+        }
+        return ret;
+    }
+
+   private:
+    std::vector<std::string> lines;
+    std::string file_name;
+    std::string version;
+    std::string black_player;
+    std::string white_player;
+    std::map<std::string, std::string> settings;
+    int max_moves = -1;
+    std::string initial_pos;
+    std::string start_time;
+    float black_rate = -1;
+    float white_rate = -1;
+    std::string last_command;
+    std::string end_pos;
+    std::string summary;
+    std::string end_time;
+};
+
+typedef struct {
+    std::string last_command;
+    std::map<std::string, std::string> settings;
+    std::vector<std::string> move_list;
+
+    std::string initial_pos;
+    std::string end_pos;
+    std::string summary;
+
+} CsaData;
+
+int CsaReader::ReadExpectedLines(int line_idx, const std::string &prefix,
+                                 void (*fpfunc)(CsaReader *reader,
+                                                const std::string &line),
+                                 const std::string &end_prefix) {
+    std::string line;
+    while (true) {
+        line = lines.at(line_idx++);
+        if (Util::StartWith(line, prefix)) {
+            (*fpfunc)(this, line);
+        } else {
+            break;
         }
     }
 
-    int max_moves = -1;
-    if (settings.count("Max_Moves")) {
+    if (end_prefix != "" && !Util::StartWith(line, end_prefix)) {
+        throw CsaException(file_name, "unexpected line:" + line);
+    } else {
+        return line_idx;
+    }
+}
+
+void CsaReader::ReadSettingLine(const std::string &line) {
+    const auto &tmp = Util::Split(line.substr(1), ':');
+    if (tmp.size() != 2) {
+        throw CsaException(file_name, "setting error:" + line);
+    }
+    settings[tmp[0]] = tmp[1];
+    if (tmp[0] == "Max_Moves") {
         max_moves = std::atoi(settings["Max_Moves"].c_str());
-        std::cout << "max_moves:" << max_moves << std::endl;
     }
-    std::cout << "settings" << std::endl;
-    for (const auto &pair : settings) {
-        std::cout << "\t" << pair.first << " " << pair.second << std::endl;
+}
+
+void CsaReader::ReadStartTime(const std::string &line) {
+    const auto &tmp = Util::Split(line.substr(1), ':');
+    if (tmp.size() != 2) {
+        throw CsaException(file_name, "setting error:" + line);
     }
+    if (tmp[0] == "$START_TIME") {
+        start_time = tmp[1];
+    }
+}
+
+void CsaReader::ReadRatingLine(const std::string &line) {
+    const auto &tmp = Util::Split(line, ':');
+    if (tmp.size() != 3) {
+        throw CsaException(file_name, "ReadRatingLine error:" + line);
+    }
+    if (tmp[0] == "black_rate") {
+        black_rate = std::atof(tmp[2].c_str());
+    } else if (tmp[0] == "white_rate") {
+        white_rate = std::atof(tmp[2].c_str());
+    }
+}
+
+int CsaReader::ReadHeader() {
+    // ヘッダ部分読み込み
+    version = lines[0];
+    black_player = lines[1];
+    white_player = lines[2];
+
+    // Version確認
+    if (version != "V2") {
+        throw CsaException(file_name, "version error:" + version);
+    }
+
+    // プレーヤー
+    if (!Util::StartWith(black_player, "N+")) {
+        throw CsaException(file_name, "black_player error:" + black_player);
+    }
+    if (!Util::StartWith(white_player, "N-")) {
+        throw CsaException(file_name, "white_player error:" + white_player);
+    }
+
+    black_player = black_player.substr(2);
+    white_player = white_player.substr(2);
+
+    // 設定読みこみ
+    int line_idx = ReadExpectedLines(
+        3, "'",
+        [](CsaReader *reader, const std::string &line) {
+            reader->ReadSettingLine(line);
+        },
+        "$");
+
+    // 開始時間取得
+    line_idx = ReadExpectedLines(
+        line_idx, "$",
+        [](CsaReader *reader, const std::string &line) {
+            reader->ReadStartTime(line);
+        },
+        "P");
+
+    // 初期配置確認
+    line_idx = ReadExpectedLines(
+        line_idx, "P",
+        [](CsaReader *reader, const std::string &line) {
+            reader->ReadRatingLine(line);
+        },
+        "+");
 
     if (initial_pos != hirate_initial_pos) {
-        std::cout << initial_pos << std::endl;
-        std::cout << hirate_initial_pos << std::endl;
+        throw CsaException(file_name, "initial pos error\n" + initial_pos);
     }
 
-    double black_rate = -1;
-    double white_rate = -1;
-    if (line == "+") {
-        while (++line_idx < lines.size()) {
-            line = lines[line_idx];
-            if (line[0] == '+' || line[0] == '%') {
-                break;
-            } else if (startWith(line, "'black_rate:")) {
-                black_rate =
-                    std::atof(line.substr(line.find_last_of(":") + 1).c_str());
-            } else if (startWith(line, "'white_rate:")) {
-                white_rate =
-                    std::atof(line.substr(line.find_last_of(":") + 1).c_str());
-            }
+    // レート確認
+    line_idx = ReadExpectedLines(
+        line_idx, "'P'",
+        [](CsaReader *reader, const std::string &line) {
+            reader->initial_pos += line + "\n";
+        },
+        "+");
+
+    return line_idx;
+}
+
+int CsaReader::ReadMoveList(int line_idx) {
+    std::string board[9][9];
+    for (int i = 0; i < 9; i++) {
+        for (int j = 0; j < 9; j++) {
+            board[i][j] = initial_pos.substr(i * 30 + 2 + j * 3, 3);
         }
     }
-    std::cout << "black_rate:" << black_rate << std::endl;
-    std::cout << "white_rate:" << white_rate << std::endl;
-
-    line_idx--;
-    std::vector<std::string> move_list;
     bool black = true;
-    std::string last_command;
-    while (++line_idx < lines.size()) {
-        line = lines[line_idx];
-        // 先手番
-        if (black && line[0] == '+') {
-            // コメント削除
-            int pos = line.find("'");
-            if (pos != std::string::npos) {
-                line = line.substr(0, line.find_last_not_of(" ", pos - 1) + 1);
-            }
+    int tesuu = 0;
+
+    std::vector<std::string> move_list;
+    while (true) {
+        std::string line = lines.at(line_idx++);
+        // コメントは削除
+        const char teban = line.at(0);
+        if (teban == '-' || teban == '+') {
             move_list.push_back(line);
-            black = false;
-        }
-        // 後手番
-        else if (!black && line[0] == '-') {
-            // コメント削除
-            int pos = line.find("'");
-            if (pos != std::string::npos) {
-                line = line.substr(0, line.find_last_not_of(" ", pos - 1) + 1);
-            }
-            move_list.push_back(line);
-            black = true;
         }
 
         // 終了コマンド
@@ -159,129 +233,145 @@ CsaData read_csa(const std::string file_name) {
         }
     }
 
-    std::cout << move_list.size() << " move:" << last_command << std::endl;
-    std::cout << "last_command:" << last_command << std::endl;
-    // footer
-    std::string end_pos;
-    std::string summary;
-    while (++line_idx < lines.size()) {
-        line = lines[line_idx];
-        if (last_command.size() == 0 && line[0] == '%') {
-            last_command = line;
+    // 手がないときはエラー
+    if (move_list.empty()) {
+        throw CsaException(file_name, "No Move");
+    }
+
+    // 千日手の場合は最後の手を削除
+    if (last_command == "SENNICHITE") {
+        move_list.pop_back();
+    }
+
+    for (int i = 0; i < move_list.size(); i++) {
+        std::string line = move_list[i];
+
+        // コメントは削除
+        const char teban = line.at(0);
+        std::string move = line.substr(1);
+        if (move.size() > 6) {
+            int pos = move.find('\'');
+            if (pos != std::string::npos) {
+                move = move.substr(0, move.find_last_not_of(" ", pos - 1) + 1);
+            }
         }
-        if (line.substr(0, 2) == "'P") {
-            end_pos += line.substr(1) + "\n";
-        } else if (startWith(line, "'summary:")) {
-            summary = line;
+        // サイズ確認
+        if (move.size() != 6)
+            throw CsaException(file_name, "move size eror:" + line);
+
+        // 手番確認
+        if ((black && teban != '+') || (!black && teban != '-'))
+            throw CsaException(file_name, "move teban eror:" + line);
+
+        //
+        int src_col = '9' - move[1];
+        int src_row = move[2] - '1';
+        int dst_col = '9' - move[3];
+        int dst_row = move[4] - '1';
+        std::string koma = move.substr(5);
+
+        if (src_col == 9 && src_row == -1) {
+            // 持ち駒
+            board[dst_row][dst_col] = (black ? "+" : "-") + koma;
+        } else {
+            // けたチェック
+            auto check = [](int a) -> bool { return a < 0 && a >= 9; };
+            if (check(src_col) || check(src_row) || check(dst_col) ||
+                check(dst_row)) {
+                throw CsaException(file_name, "koma error:" + line);
+            }
+
+            // 元の駒が同じかチェック
+            if (teban + koma != board[src_row][src_col] &&
+                teban + narikoma(koma) != board[src_row][src_col]) {
+                throw CsaException(file_name,
+                                   "src koma error:" + line + "\n" +
+                                       boardToString((std::string *)board));
+            }
+
+            board[dst_row][dst_col] = board[src_row][src_col];
         }
     }
-    for (const auto &str : summary) {
-        std::cout << str << " ";
-    }
-    std::cout << std::endl;
-    std::cout << "read_csa finish" << std::endl;
-
-    CsaData data;
-    data.last_command = last_command;
-    data.move_list = move_list;
-    data.initial_pos = initial_pos;
-    data.end_pos = end_pos;
-    data.settings = settings;
-    data.summary = summary;
-
-    return data;
+    end_pos = boardToString((std::string *)board);
+    return line_idx;
 }
 
-std::string narikoma(const std::string &koma) {
-    std::map<std::string, std::string> pair = {
-        {"FU", "TO"}, {"KY", "NY"}, {"KE", "NK"},
-        {"GI", "NG"}, {"KA", "UM"}, {"HI", "RY"},
-    };
-    return pair.count(koma) ? pair[koma] : "";
+void CsaReader::ReadFooter(int line_idx) {
+    std::vector<std::string> Plist;
+
+    while (line_idx < lines.size()) {
+        const std::string &line = lines.at(line_idx++);
+
+        // 最後の局面
+        if (Util::StartWith(line, "'P")) {
+            Plist.push_back(line.substr(3));
+        }
+
+        // サマリー
+        if (Util::StartWith(line, "'summary:")) {
+            summary = line.substr(strlen("'summary:"));
+        }
+
+        // 終了日時
+        if (Util::StartWith(line, "$END_TIME:")) {
+            end_time = line.substr(strlen("$END_TIME:"));
+        }
+    }
+
+    if (Plist.size() != 11) {
+        throw CsaException(file_name, "Plist size");
+    }
+    if (summary.empty()) {
+        throw CsaException(file_name, "no summary");
+    }
+    if (end_time.empty()) {
+        throw CsaException(file_name, "no end_time");
+    }
+
+    std::string end;
+    for (int i = 0; i < 9; i++) {
+        end += Plist[i] + "\n";
+    }
+
+    if (end_pos != end) {
+        throw CsaException(file_name, "end pos error\n" + end_pos + "\n" + end);
+    }
+}
+
+void CsaReader::ReadCsa(const std::string &file) {
+    file_name = file;
+    // ファイルオープン
+    std::ifstream ifs(file_name);
+    if (!ifs) {
+        throw CsaException(file_name, " cannot open");
+    }
+
+    // 行の読み込み
+    std::string line;
+    while (std::getline(ifs, line)) {
+        if (line.size() == 0) {
+            throw CsaException(file_name, "void line error");
+        }
+        lines.push_back(line);
+    }
+
+    // ヘッダ読みこみ
+    int line_idx = ReadHeader();
+
+    // 手の読み込み
+    line_idx = ReadMoveList(line_idx);
+
+    // フッターの読みこみ
+    ReadFooter(line_idx);
 }
 
 int main(int argc, char **argv) {
-    for (int fileno = 1; fileno < argc; fileno++) {
-        std::cout << "No." << fileno << std::endl;
-        auto csa = read_csa(argv[fileno]);
-        const std::string &initial_pos = csa.initial_pos;
-        const auto &move_list = csa.move_list;
-        const std::string &end_pos = csa.end_pos;
-        const std::string &last_command = csa.last_command;
-        const auto &settings = csa.settings;
-
-        if (initial_pos != hirate_initial_pos) {
-            std::cerr << "initial_pos is not hirate" << std::endl;
-        }
-
-        std::string board[9][9];
-        for (int i = 0; i < 9; i++) {
-            for (int j = 0; j < 9; j++) {
-                board[i][j] = initial_pos.substr(i * 30 + 2 + j * 3, 3);
-            }
-        }
-        bool black = true;
-        int last_num = move_list.size();
-        if (last_command == "%SENNICHITE") {
-            last_num--;
-        }
-        for (int tesuu = 0; tesuu < last_num; tesuu++) {
-            const auto &move = move_list[tesuu];
-            // std::cout << move << std::endl;
-            std::string teban = move.substr(0, 1);
-            unsigned int src_col = '9' - move[1];
-            unsigned int src_row = move[2] - '1';
-            unsigned int dst_col = '9' - move[3];
-            unsigned int dst_row = move[4] - '1';
-            std::string koma = move.substr(5, 2);
-            if ((black ? "+" : "-") != teban || move.size() != 7 ||
-                (src_col != 9 && (src_row >= 9 || src_col >= 9)) ||
-                dst_row >= 9 || dst_col >= 9) {
-                std::cerr << "move error:'" << move << "'" << std::endl;
-                return -1;
-            }
-            if (src_col == 9) {
-                board[dst_row][dst_col] = (black ? "+" : "-") + koma;
-            } else {
-                if (board[src_row][src_col] != ((black ? "+" : "-") + koma) &&
-                    board[src_row][src_col][0] +
-                            narikoma(board[src_row][src_col].substr(1)) !=
-                        ((black ? "+" : "-") + koma)) {
-                    for (int i = 0; i < 9; i++) {
-                        for (int j = 0; j < 9; j++) {
-                            std::cout << board[i][j];
-                        }
-                        std::cout << std::endl;
-                    }
-                    std::cerr << "move koma error:" << src_row << src_col
-                              << move << koma << std::endl;
-                    return -1;
-
-                } else {
-                    board[dst_row][dst_col] = (black ? "+" : "-") + koma;
-                    board[src_row][src_col] = " * ";
-                }
-            }
-            black = !black;
-        }
-
-        std::stringstream last_board_ss;
-        for (int i = 0; i < 9; i++) {
-            last_board_ss << "P" << i + 1;
-            for (int j = 0; j < 9; j++) {
-                last_board_ss << board[i][j];
-            }
-            last_board_ss << std::endl;
-        }
-        std::string last_board = last_board_ss.str();
-
-        if (last_board != end_pos.substr(0, 270)) {
-            std::cout << "last_board" << std::endl;
-            std::cout << last_board << std::endl;
-
-            std::cout << "end_pos" << std::endl;
-            std::cout << end_pos.substr(0, 270) << std::endl;
-            return -1;
+    for (int i = 1; i < argc; i++) {
+        CsaReader reader;
+        try {
+            reader.ReadCsa(argv[i]);
+        } catch (const std::runtime_error &e) {
+            std::cerr << e.what() << std::endl;
         }
     }
 }
