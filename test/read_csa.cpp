@@ -14,15 +14,15 @@
 #include "../util.h"
 
 static std::string hirate_initial_pos =
-    "-KY-KE-GI-KI-OU-KI-GI-KE-KY\n"
-    " * -HI *  *  *  *  * -KA * \n"
-    "-FU-FU-FU-FU-FU-FU-FU-FU-FU\n"
-    " *  *  *  *  *  *  *  *  * \n"
-    " *  *  *  *  *  *  *  *  * \n"
-    " *  *  *  *  *  *  *  *  * \n"
-    "+FU+FU+FU+FU+FU+FU+FU+FU+FU\n"
-    " * +KA *  *  *  *  * +HI * \n"
-    "+KY+KE+GI+KI+OU+KI+GI+KE+KY\n";
+    "P1-KY-KE-GI-KI-OU-KI-GI-KE-KY\n"
+    "P2 * -HI *  *  *  *  * -KA * \n"
+    "P3-FU-FU-FU-FU-FU-FU-FU-FU-FU\n"
+    "P4 *  *  *  *  *  *  *  *  * \n"
+    "P5 *  *  *  *  *  *  *  *  * \n"
+    "P6 *  *  *  *  *  *  *  *  * \n"
+    "P7+FU+FU+FU+FU+FU+FU+FU+FU+FU\n"
+    "P8 * +KA *  *  *  *  * +HI * \n"
+    "P9+KY+KE+GI+KI+OU+KI+GI+KE+KY\n";
 
 static std::string narikoma(const std::string &koma) {
     std::map<std::string, std::string> pair = {
@@ -144,7 +144,7 @@ int CsaReader::ReadHeader() {
     line_idx = ReadExpectedLines(
         line_idx, "P",
         [](CsaReader *reader, const std::string &line) {
-            reader->initial_pos += line.substr(2) + "\n";
+            reader->initial_pos += line + "\n";
         },
         "+");
 
@@ -167,7 +167,7 @@ int CsaReader::ReadMoveList(int line_idx) {
     std::string board[9][9];
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            board[i][j] = initial_pos.substr(i * 28 + j * 3, 3);
+            board[i][j] = initial_pos.substr(i * 30 + 2 + j * 3, 3);
         }
     }
     bool black = true;
@@ -332,6 +332,11 @@ void CsaReader::ReadFooter(int line_idx) {
             if (mochigoma[i][koma] != end_mochigoma[i][koma])
                 throw CsaException(file_name, "mochigoma:" + koma);
         }
+    }
+
+    end_pos = "";
+    for (const std::string &line : Plist) {
+        end_pos += line + "\n";
     }
 }
 
