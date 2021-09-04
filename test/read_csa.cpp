@@ -235,7 +235,7 @@ int CsaReader::ReadMoveList(int line_idx) {
 
         // 終了コマンド
         if (line[0] == '%') {
-            last_command = line;
+            last_command = Util::Split(line, ',')[0];
             break;
         }
         if (move_list.size() == max_moves) {
