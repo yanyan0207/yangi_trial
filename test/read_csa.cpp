@@ -1,3 +1,5 @@
+#include "./read_csa.h"
+
 #include <string.h>
 
 #include <filesystem>
@@ -11,7 +13,7 @@
 
 #include "../util.h"
 
-std::string hirate_initial_pos =
+static std::string hirate_initial_pos =
     "-KY-KE-GI-KI-OU-KI-GI-KE-KY\n"
     " * -HI *  *  *  *  * -KA * \n"
     "-FU-FU-FU-FU-FU-FU-FU-FU-FU\n"
@@ -22,7 +24,7 @@ std::string hirate_initial_pos =
     " * +KA *  *  *  *  * +HI * \n"
     "+KY+KE+GI+KI+OU+KI+GI+KE+KY\n";
 
-std::string narikoma(const std::string &koma) {
+static std::string narikoma(const std::string &koma) {
     std::map<std::string, std::string> pair = {
         {"FU", "TO"}, {"KY", "NY"}, {"KE", "NK"},
         {"GI", "NG"}, {"KA", "UM"}, {"HI", "RY"},
@@ -30,7 +32,7 @@ std::string narikoma(const std::string &koma) {
     return pair.count(koma) ? pair[koma] : "";
 }
 
-std::string narimotokoma(const std::string &koma) {
+static std::string narimotokoma(const std::string &koma) {
     std::map<std::string, std::string> pair = {
         {"TO", "FU"}, {"NY", "KY"}, {"NK", "KE"},
         {"NG", "GI"}, {"UM", "KA"}, {"RY", "HI"},
@@ -38,70 +40,16 @@ std::string narimotokoma(const std::string &koma) {
     return pair.count(koma) ? pair[koma] : koma;
 }
 
-class CsaException : public std::runtime_error {
-   public:
-    explicit CsaException(const std::string file_name, const std::string reason)
-        : std::runtime_error(file_name + " " + reason) {}
-};
-
-class CsaReader {
-    friend int main(int, char **);
-
-   public:
-    void ReadCsa(const std::string &file_name);
-
-   protected:
-    int ReadExpectedLines(int line_idx, const std::string &prefix,
-                          void (*fpfunc)(CsaReader *reader,
-                                         const std::string &line),
-                          const std::string &end_prefix = "");
-    void ReadSettingLine(const std::string &line);
-    void ReadStartTime(const std::string &line);
-    void ReadRatingLine(const std::string &line);
-    int ReadHeader();
-    int ReadMoveList(int line_idx);
-    void ReadFooter(int linc_idx);
-    static std::string boardToString(const std::string *board) {
-        std::string ret;
-        for (int row = 0; row < 9; row++) {
-            for (int col = 0; col < 9; col++) {
-                ret += board[row * 9 + col];
-            }
-            ret += "\n";
+static std::string boardToString(const std::string *board) {
+    std::string ret;
+    for (int row = 0; row < 9; row++) {
+        for (int col = 0; col < 9; col++) {
+            ret += board[row * 9 + col];
         }
-        return ret;
+        ret += "\n";
     }
-
-   private:
-    std::vector<std::string> lines;
-    std::string file_name;
-    std::string version;
-    std::string black_player;
-    std::string white_player;
-    std::map<std::string, std::string> settings;
-    int max_moves = -1;
-    std::string initial_pos;
-    std::string start_time;
-    float black_rate = -1;
-    float white_rate = -1;
-    std::vector<std::string> move_list;
-    std::string last_command;
-    std::string end_pos;
-    std::string summary;
-    std::string end_time;
-    std::map<std::string, int> mochigoma[2];
-};
-
-typedef struct {
-    std::string last_command;
-    std::map<std::string, std::string> settings;
-    std::vector<std::string> move_list;
-
-    std::string initial_pos;
-    std::string end_pos;
-    std::string summary;
-
-} CsaData;
+    return ret;
+}
 
 int CsaReader::ReadExpectedLines(int line_idx, const std::string &prefix,
                                  void (*fpfunc)(CsaReader *reader,
@@ -412,65 +360,4 @@ void CsaReader::ReadCsa(const std::string &file) {
 
     // フッターの読みこみ
     ReadFooter(line_idx);
-}
-
-int main(int argc, char **argv) {
-    std::cout << "argc:" << argc << std::endl;
-
-    std::vector<std::string> file_list;
-    for (int i = 1; i < argc; i++) {
-        const char *file = argv[i];
-        if (std::filesystem::exists(file)) {
-            if (std::filesystem::is_directory(file)) {
-                for (const auto &f : std::filesystem::directory_iterator(file))
-                    file_list.push_back(f.path().c_str());
-            } else {
-                file_list.push_back(file);
-            }
-        }
-    }
-
-    int file_num = 0;
-    int ok_num = 0;
-
-    std::ofstream ofs("output.csv");
-    ofs << "No,file_name,start_time,end_time"
-           ",black_player,white_player"
-           ",black_rate,white_rate"
-           ",move_num,last_command,summary"
-        << std::endl;
-    for (const std::string &file : file_list) {
-        CsaReader reader;
-        if (Util::EndWith(file, ".csa")) {
-            file_num++;
-            try {
-                reader.ReadCsa(file);
-                ok_num++;
-                ofs << ok_num;
-                ofs << "," << std::filesystem::path(file).filename();
-                ofs << "," << reader.start_time;
-                ofs << "," << reader.end_time;
-                ofs << "," << reader.black_player;
-                ofs << "," << reader.white_player;
-                ofs << "," << reader.black_rate;
-                ofs << "," << reader.white_rate;
-                ofs << "," << reader.move_list.size();
-                ofs << "," << reader.last_command;
-                ofs << "," << reader.summary;
-                ofs << std::endl;
-            } catch (const CsaException &e) {
-                std::cerr << e.what() << std::endl;
-            } catch (const std::runtime_error &e) {
-                std::cerr << e.what() << std::endl;
-            } catch (const std::out_of_range &e) {
-                std::cerr << "out_of_range:" << file << ":" << e.what()
-                          << std::endl;
-            } catch (...) {
-                std::cerr << "unexpected error:" << file << std::endl;
-            }
-        }
-    }
-    std::cout << "file_num:" << file_num << std::endl;
-    std::cout << "ok_num:" << ok_num << std::endl;
-    std::cout << "error_num:" << file_num - ok_num << std::endl;
 }

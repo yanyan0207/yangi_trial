@@ -9,6 +9,7 @@ add_definitions(-g)
 set(Target_Files
     Util.cpp
     test/read_csa.cpp
+    test/create_csa_list.cpp
 )
 
  #実行ファイルの生成
