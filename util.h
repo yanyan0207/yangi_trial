@@ -9,5 +9,5 @@ class Util {
                                           const char seperator);
 
     static bool StartWith(const std::string &str, const std::string &prefix);
-    static bool EndtWith(const std::string &str, const std::string &postfix);
+    static bool EndWith(const std::string &str, const std::string &postfix);
 };

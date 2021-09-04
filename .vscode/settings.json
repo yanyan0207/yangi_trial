@@ -66,12 +66,13 @@
         "typeinfo": "cpp",
         "unordered_map": "cpp",
         "utility": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "filesystem": "cpp"
     },
     "editor.formatOnSave": true,
     "cmake.debugConfig": {
         "args": [
-            "../wdoor+floodgate-300-10F+AobaZero_w930_n_p400_t8+Krist_483_473stb_1000k+20200404170006.csa"
+            "/Users/yanyano0207/Downloads/2020/wdoor+floodgate-300-10F+elmo_WCSC27_479_100k+Krist_483_473stb_100k+20200620040006.csa"
         ]
     }
 }

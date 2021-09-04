@@ -16,6 +16,6 @@ bool Util::StartWith(const std::string &str, const std::string &prefix) {
     return str.substr(0, prefix.length()) == prefix;
 }
 
-bool Util::EndtWith(const std::string &str, const std::string &postfix) {
+bool Util::EndWith(const std::string &str, const std::string &postfix) {
     return str.substr(str.length() - postfix.length()) == postfix;
 }
