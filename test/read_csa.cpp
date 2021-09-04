@@ -34,7 +34,7 @@ std::string narimotokoma(const std::string &koma) {
         {"TO", "FU"}, {"NY", "KY"}, {"NK", "KE"},
         {"NG", "GI"}, {"UM", "KA"}, {"RY", "HI"},
     };
-    return pair.count(koma) ? pair[koma] : "";
+    return pair.count(koma) ? pair[koma] : koma;
 }
 
 class CsaException : public std::runtime_error {
@@ -85,6 +85,7 @@ class CsaReader {
     std::string end_pos;
     std::string summary;
     std::string end_time;
+    std::map<std::string, int> mochigoma[2];
 };
 
 typedef struct {
@@ -278,8 +279,15 @@ int CsaReader::ReadMoveList(int line_idx) {
         std::string koma = move.substr(4);
 
         if (src_col == 9 && src_row == -1) {
+            // 持っているか確認
+            if (mochigoma[black ? 0 : 1][koma] == 0) {
+                throw new CsaException(
+                    file_name, "no koma:" + line + ":" + std::to_string(teban));
+            }
+
             // 持ち駒
             board[dst_row][dst_col] = (black ? "+" : "-") + koma;
+            mochigoma[black ? 0 : 1][koma]--;
         } else {
             // けたチェック
             auto check = [](int a) -> bool { return a < 0 || a >= 9; };
@@ -296,6 +304,17 @@ int CsaReader::ReadMoveList(int line_idx) {
                                        boardToString((std::string *)board));
             }
 
+            // コマを撮る
+            if (board[dst_row][dst_col] == " * ")
+                ;
+            else if (board[dst_row][dst_col][0] == (black ? '-' : '+')) {
+                mochigoma[black ? 0 : 1]
+                         [narimotokoma(board[dst_row][dst_col].substr(1))]++;
+            } else
+                throw CsaException(file_name, "move to my pos:" + line + ":" +
+                                                  std::to_string(teban));
+
+            // コマを移動
             board[dst_row][dst_col] = teban + koma;
             board[src_row][src_col] = " * ";
         }
@@ -338,6 +357,7 @@ void CsaReader::ReadFooter(int line_idx) {
         throw CsaException(file_name, "no end_time");
     }
 
+    // 最後の局面
     std::string end;
     for (int i = 0; i < 9; i++) {
         end += Plist[i].substr(2) + "\n";
@@ -345,6 +365,22 @@ void CsaReader::ReadFooter(int line_idx) {
 
     if (end_pos != end) {
         throw CsaException(file_name, "end pos error\n" + end_pos + "\n" + end);
+    }
+
+    // 持ち駒の確認
+    std::map<std::string, int> end_mochigoma[2];
+    for (int i = 9; i < Plist.size(); i++) {
+        std::string line = Plist[i];
+        int teban = line.at(1) == '+' ? 0 : 1;
+        for (int j = 0; j < ((line.size() - 2) / 4); j++)
+            end_mochigoma[teban][line.substr(2 + j * 4 + 2, 2)]++;
+    }
+    for (int i = 0; i < 2; i++) {
+        for (const std::string &koma : std::vector<std::string>{
+                 "FU", "KY", "KE", "GI", "KI", "KA", "HI"}) {
+            if (mochigoma[i][koma] != end_mochigoma[i][koma])
+                throw CsaException(file_name, "mochigoma:" + koma);
+        }
     }
 }
 
