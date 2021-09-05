@@ -1,10 +1,13 @@
+#include <assert.h>
+#include <memory.h>
+
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include "../util.h"
 #include "./read_csa.h"
-
 class SingleBoard {
     friend int main(int, char **);
 
