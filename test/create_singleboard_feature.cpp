@@ -270,27 +270,27 @@ int main(int argc, char **argv) {
         throw CsaException(argv[1], "cannot read");
     }
     std::ofstream out("output_feature.csv");
-    out << "filename"
+    out << "Filename"
         << ","
-        << "tesuu";
+        << "Tesuu";
     for (int row = 9; row > 0; row--) {
         for (int col = 1; col <= 9; col++) {
             out << ","
-                << "Point_" << col << row;
+                << "FP" << col << row;
         }
     }
     for (int i = 0; i < 2; i++) {
         for (const auto &pair : SingleBoard::KOMA_CONVERTER) {
             if (pair.second >= SingleBoard::Ou) continue;
-            out << "," << (i == 0 ? "Black_" : "White_") << pair.first;
+            out << "," << (i == 0 ? "FB" : "FW") << pair.first;
         }
     }
     // from,to,koma,nari,capture
-    out << ",From";
-    out << ",To";
-    out << ",Koma";
-    out << ",Nari";
-    out << ",Capture";
+    out << ",HFrom";
+    out << ",HTo";
+    out << ",HKoma";
+    out << ",HNari";
+    out << ",HCapture";
     out << std::endl;
 
     std::string line;
