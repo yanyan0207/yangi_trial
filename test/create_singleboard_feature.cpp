@@ -29,7 +29,7 @@ class SingleBoard {
         Ryuu = 14
     };
 
-    typedef char Point;
+    typedef int Point;
 
     typedef struct THand {
         Point from;
@@ -281,10 +281,16 @@ int main(int argc, char **argv) {
     }
     for (int i = 0; i < 2; i++) {
         for (const auto &pair : SingleBoard::KOMA_CONVERTER) {
-            if (pair.second == SingleBoard::Ou) break;
+            if (pair.second >= SingleBoard::Ou) continue;
             out << "," << (i == 0 ? "Black_" : "White_") << pair.first;
         }
     }
+    // from,to,koma,nari,capture
+    out << ",From";
+    out << ",To";
+    out << ",Koma";
+    out << ",Nari";
+    out << ",Capture";
     out << std::endl;
 
     std::string line;
@@ -329,6 +335,15 @@ int main(int argc, char **argv) {
             if (board.Move() == 0) {
                 Throw("move cant error");
             }
+            // 着手を出力 from,to,koma,nari,capture
+            const SingleBoard::Hand &hand = board.hand_list[tesuu];
+            const SingleBoard::HandExtraInfo &info =
+                board.hand_extra_info_list[tesuu];
+            out << "," << (int)hand.from;
+            out << "," << (int)hand.to;
+            out << "," << (int)hand.koma;
+            out << "," << (info.nari ? 1 : 0);
+            out << "," << (int)info.capture;
             out << std::endl;
         }
 
