@@ -3,12 +3,18 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+from argparse import ArgumentParser
 
 if __name__ == "__main__":
-    df = pd.read_csv(sys.argv[1], index_col=0)
+    parser = ArgumentParser()
+    parser.add_argument("--cut_rate", type=int, default=4000)
+    parser.add_argument("--cut_tesuu", type=int, default=50)
+    parser.add_argument("file", type=str)
 
-    min_rate = 4400
-    min_tesuu = 50
+    args = parser.parse_args()
+    min_rate = args.cut_rate
+    min_tesuu = args.cut_tesuu
+    df = pd.read_csv(args.file, index_col=0)
     df = df[(df.black_rate >= min_rate) & (df.white_rate >= min_rate)]
     df = df[df.move_num >= min_tesuu]
     print(df.info())
@@ -17,6 +23,4 @@ if __name__ == "__main__":
     plt.figure()
     df["move_num"].plot(kind='hist')
 
-    df.head()
     df.to_csv("output_filterd.csv")
-    plt.show()

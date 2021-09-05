@@ -273,8 +273,8 @@ int main(int argc, char **argv) {
     out << "Filename"
         << ","
         << "Tesuu";
-    for (int row = 9; row > 0; row--) {
-        for (int col = 1; col <= 9; col++) {
+    for (int col = 9; col > 0; col--) {
+        for (int row = 1; row <= 9; row++) {
             out << ","
                 << "FP" << col << row;
         }
