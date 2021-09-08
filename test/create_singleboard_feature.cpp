@@ -204,13 +204,21 @@ SingleBoard::Point SingleBoard::StringToPoint(const std::string &str_point) {
 }
 
 SingleBoard::Hand SingleBoard::StringToHand(const std::string &str_hand) {
-    if (str_hand.size() != 7) Throw("hand size error");
+    std::string str_hand_trimmed = str_hand;
+    if (str_hand.find('\'') != std::string::npos) {
+        str_hand_trimmed = str_hand.substr(0, str_hand.find('\''));
+        str_hand_trimmed = str_hand_trimmed.substr(
+            0, str_hand_trimmed.find_last_not_of(' ') + 1);
+    }
+    str_hand.substr(0, str_hand.find_last_not_of(' ') + 1);
+    if (str_hand_trimmed.size() != 7)
+        Throw("hand size error:" + str_hand + ":" + str_hand_trimmed);
     Hand hand;
-    Teban teban = TEBAN_CONVERTER.at(str_hand.at(0));
-    hand.from = StringToPoint(str_hand.substr(1, 2));
-    hand.to = StringToPoint(str_hand.substr(3, 2));
+    Teban teban = TEBAN_CONVERTER.at(str_hand_trimmed.at(0));
+    hand.from = StringToPoint(str_hand_trimmed.substr(1, 2));
+    hand.to = StringToPoint(str_hand_trimmed.substr(3, 2));
     if (hand.to == KOMADAI) Throw("dst KOMADA error");
-    hand.koma = KOMA_CONVERTER.at(str_hand.substr(5, 2)) * teban;
+    hand.koma = KOMA_CONVERTER.at(str_hand_trimmed.substr(5, 2)) * teban;
     return hand;
 }
 
@@ -283,9 +291,11 @@ int main(int argc, char **argv) {
         }
     }
     for (int i = 0; i < 2; i++) {
-        for (const auto &pair : SingleBoard::KOMA_CONVERTER) {
-            if (pair.second >= SingleBoard::Ou) continue;
-            out << "," << (i == 0 ? "FB" : "FW") << pair.first;
+        // TODO 書き直す
+        static std::string koma_list[] = {"FU", "KY", "KE", "GI",
+                                          "KA", "HI", "KI"};
+        for (const auto &koma : koma_list) {
+            out << "," << (i == 0 ? "FB" : "FW") << koma;
         }
     }
     // from,to,koma,nari,capture
@@ -307,13 +317,15 @@ int main(int argc, char **argv) {
         //    file_name = file_name.substr(1, file_name.length() - 2);
         std::filesystem::path p;
         ss >> p;
-        std::filesystem::path file_path = "/Users/yanyano0207/Downloads/2020/";
+        std::filesystem::path file_path = "wdoor2020/";
         file_path += p;
         std::cout << "filename:" << file_path.c_str() << std::endl;
-        CsaReader reader;
+        std::unique_ptr<CsaReader> preader(new CsaReader());
+        CsaReader &reader = *preader;
         reader.ReadCsa(file_path.c_str());
 
-        SingleBoard board;
+        std::unique_ptr<SingleBoard> pboard(new SingleBoard());
+        SingleBoard &board = *pboard;
         board.Init(reader.initial_pos);
         board.SetHandList(reader.move_list);
 
@@ -333,7 +345,8 @@ int main(int argc, char **argv) {
             // 持ち駒を出力
             for (int teban = 0; teban < 2; teban++)
                 for (int kind = 0; kind < 7; kind++)
-                    out << "," << (int)board.kyokumen.board[kind];
+                    out << ","
+                        << (int)board.kyokumen.mochigoma_list[teban][kind];
 
             if (board.Move() == 0) {
                 Throw("move cant error");
@@ -350,11 +363,34 @@ int main(int argc, char **argv) {
             out << std::endl;
         }
 
-        SingleBoard::Kyokumen end_kyokumen;
+        std::unique_ptr<SingleBoard::Kyokumen> pend_kyokumen(
+            new SingleBoard::Kyokumen());
+        auto &end_kyokumen = *pend_kyokumen;
         board.StringToKyokumen(reader.end_pos, &end_kyokumen);
         if (!board.kyokumen.IsSame(end_kyokumen)) {
             std::cerr << reader.end_pos << std::endl;
             std::cerr << board.KyokumenToString(board.kyokumen) << std::endl;
+            for (int pos = 0; pos < 81; pos++) {
+                if (board.kyokumen.board[pos] != end_kyokumen.board[pos]) {
+                    std::cerr << 9 - pos % 9 << pos / 9 + 1 << " is different"
+                              << std::endl;
+                }
+            }
+            for (int teban = 0; teban < 2; teban++) {
+                for (int koma = 0; koma < 7; koma++) {
+                    if (board.kyokumen.mochigoma_list[teban][koma] !=
+                        end_kyokumen.mochigoma_list[teban][koma]) {
+                        std::cerr << "teban:" << teban << " koma:_index" << koma
+                                  << " is different" << std::endl;
+                        std::cerr
+                            << "board:"
+                            << (int)board.kyokumen.mochigoma_list[teban][koma]
+                            << " end kyokumen:"
+                            << (int)end_kyokumen.mochigoma_list[teban][koma]
+                            << std::endl;
+                    }
+                }
+            }
             Throw("end kyokumen differnt");
         }
     }
