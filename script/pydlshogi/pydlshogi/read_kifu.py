@@ -10,7 +10,11 @@ from .features import *
 def read_kifu(kifu_list_file):
     positions = []
     for filepath in kifu_list_file:
-        kifu = shogi.CSA.Parser.parse_file(filepath)[0]
+        try:
+            kifu = shogi.CSA.Parser.parse_file(filepath)[0]
+        except ValueError as e:
+            print(filepath, "cannot read", e)
+            continue
         win_color = shogi.BLACK if kifu['win'] == 'b' else shogi.WHITE
         board = shogi.Board()
         for move in kifu['moves']:
