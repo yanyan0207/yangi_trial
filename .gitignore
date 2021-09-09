@@ -1,3 +1,4 @@
 build*/
 *.plist
 .DS_Store
+__pycache__
