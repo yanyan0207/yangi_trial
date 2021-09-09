@@ -2,7 +2,8 @@
 import shogi
 import copy
 
-from pydlshogi.common import *
+from .common import *
+
 
 def make_input_features(piece_bb, occupied, pieces_in_hand):
     features = []
@@ -27,17 +28,22 @@ def make_input_features(piece_bb, occupied, pieces_in_hand):
 
     return features
 
+
 def make_input_features_from_board(board):
     if board.turn == shogi.BLACK:
         piece_bb = board.piece_bb
         occupied = (board.occupied[shogi.BLACK], board.occupied[shogi.WHITE])
-        pieces_in_hand = (board.pieces_in_hand[shogi.BLACK], board.pieces_in_hand[shogi.WHITE])
+        pieces_in_hand = (
+            board.pieces_in_hand[shogi.BLACK], board.pieces_in_hand[shogi.WHITE])
     else:
         piece_bb = [bb_rotate_180(bb) for bb in board.piece_bb]
-        occupied = (bb_rotate_180(board.occupied[shogi.WHITE]), bb_rotate_180(board.occupied[shogi.BLACK]))
-        pieces_in_hand = (board.pieces_in_hand[shogi.WHITE], board.pieces_in_hand[shogi.BLACK])
+        occupied = (bb_rotate_180(board.occupied[shogi.WHITE]), bb_rotate_180(
+            board.occupied[shogi.BLACK]))
+        pieces_in_hand = (
+            board.pieces_in_hand[shogi.WHITE], board.pieces_in_hand[shogi.BLACK])
 
     return make_input_features(piece_bb, occupied, pieces_in_hand)
+
 
 def make_output_label(move, color):
     move_to = move.to_square
@@ -86,6 +92,7 @@ def make_output_label(move, color):
     move_label = 9 * 9 * move_direction + move_to
 
     return move_label
+
 
 def make_features(position):
     piece_bb, occupied, pieces_in_hand, move, win = position

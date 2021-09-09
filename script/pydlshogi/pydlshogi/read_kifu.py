@@ -2,7 +2,7 @@
 import shogi.CSA
 import copy
 
-from pydlshogi.features import *
+from .features import *
 
 # read kifu
 
